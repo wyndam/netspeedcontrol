@@ -1,0 +1,12 @@
+{
+	"luci-app-netspeedcontrol": {
+		"description": "Grant access to net speed control configuration",
+		"read": {
+			"uci": [ "netspeedcontrol" ]
+		},
+		"write": {
+			"uci": [ "netspeedcontrol" ]
+		}
+	}
+}
+

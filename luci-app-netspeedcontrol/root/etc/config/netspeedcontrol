@@ -1,0 +1,15 @@
+config globals 'globals'
+	option enabled '1'
+	option log_enabled '0'
+
+config rule
+	option enabled '0'
+	option name 'KidPhone'
+	option target_type 'mac'
+	option mac 'AA:BB:CC:DD:EE:FF'
+	option mode 'block'
+	option weekdays '1 2 3 4 5'
+	option start_time '21:00'
+	option stop_time '07:00'
+	option up_kbit '256'
+	option down_kbit '1024'
