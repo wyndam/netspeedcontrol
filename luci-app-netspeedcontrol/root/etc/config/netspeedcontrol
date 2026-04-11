@@ -1,6 +1,5 @@
 config globals 'globals'
 	option enabled '1'
-	option policy_mode 'blacklist'
 	option log_enabled '0'
 
 config rule
@@ -14,9 +13,3 @@ config rule
 	option stop_time '07:00'
 	option up_kbit '256'
 	option down_kbit '1024'
-
-config allow
-	option enabled '0'
-	option name 'MyPhone'
-	option target_type 'mac'
-	option mac 'AA:BB:CC:DD:EE:FF'

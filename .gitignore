@@ -4,6 +4,5 @@
 
 dist/*.ipk
 !dist/luci-app-netspeedcontrol_0.1.0-27_all.ipk
-!dist/luci-app-netspeedcontrol_0.1.0-28_all.ipk
 
 *.tmp

@@ -5,7 +5,6 @@ set -e
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 TABLE_FAMILY="inet"
-BRIDGE_FAMILY="bridge"
 TABLE_NAME="netspeedcontrol"
 CHAIN_PREROUTING_NAME="prerouting"
 CHAIN_NAME="forward"
@@ -46,20 +45,11 @@ require_tools() {
 }
 
 ensure_table() {
-	"$NFT_BIN" list table "$TABLE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1 || "$NFT_BIN" add table "$TABLE_FAMILY" "$TABLE_NAME"
-	"$NFT_BIN" list chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" >/dev/null 2>&1 || \
-		"$NFT_BIN" add chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" "{ type filter hook prerouting priority raw; policy accept; }"
-	"$NFT_BIN" list chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" >/dev/null 2>&1 || \
-		"$NFT_BIN" add chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" "{ type filter hook forward priority filter; policy accept; }"
-	"$NFT_BIN" list chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" >/dev/null 2>&1 || \
-		"$NFT_BIN" add chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" "{ type filter hook input priority filter; policy accept; }"
-}
-
-ensure_bridge_table() {
-	"$NFT_BIN" list table "$BRIDGE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1 || \
-		"$NFT_BIN" add table "$BRIDGE_FAMILY" "$TABLE_NAME" || return 1
-	"$NFT_BIN" list chain "$BRIDGE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" >/dev/null 2>&1 || \
-		"$NFT_BIN" add chain "$BRIDGE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" "{ type filter hook prerouting priority -300; policy accept; }" || return 1
+	"$NFT_BIN" list table "$TABLE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1 && return 0
+	"$NFT_BIN" add table "$TABLE_FAMILY" "$TABLE_NAME"
+	"$NFT_BIN" add chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" "{ type filter hook prerouting priority raw; policy accept; }"
+	"$NFT_BIN" add chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" "{ type filter hook forward priority filter; policy accept; }"
+	"$NFT_BIN" add chain "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" "{ type filter hook input priority filter; policy accept; }"
 }
 
 flush_rules() {
@@ -70,24 +60,11 @@ flush_rules() {
 	fi
 }
 
-flush_bridge_rules() {
-	if "$NFT_BIN" list table "$BRIDGE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1; then
-		"$NFT_BIN" flush chain "$BRIDGE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME"
-	fi
-}
-
-clear_bridge_all() {
-	if "$NFT_BIN" list table "$BRIDGE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1; then
-		"$NFT_BIN" delete table "$BRIDGE_FAMILY" "$TABLE_NAME"
-	fi
-}
-
 clear_all() {
 	flush_state_conntrack
 	if "$NFT_BIN" list table "$TABLE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1; then
 		"$NFT_BIN" delete table "$TABLE_FAMILY" "$TABLE_NAME"
 	fi
-	clear_bridge_all
 	rm -f "$STATE_DIR"/* 2>/dev/null || true
 }
 
@@ -367,37 +344,6 @@ append_limit_rule6() {
 	fi
 }
 
-append_whitelist_allow_rule() {
-	local mac
-	mac="$(normalize_mac "$1")"
-
-	[ -n "$mac" ] || return 0
-	"$NFT_BIN" add rule "$BRIDGE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" ether saddr "$mac" counter accept
-}
-
-append_whitelist_drop_rule() {
-	"$NFT_BIN" add rule "$BRIDGE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" ether type { ip, ip6 } counter drop
-}
-
-handle_whitelist_rule() {
-	local section enabled name mac
-	section="$1"
-
-	config_get enabled "$section" enabled "0"
-	[ "$enabled" = "1" ] || return 0
-
-	config_get name "$section" name "$section"
-	config_get mac "$section" mac ""
-	mac="$(normalize_mac "$mac")"
-
-	if [ -z "$mac" ]; then
-		log "skip whitelist rule [$name]: missing MAC address"
-		return 0
-	fi
-
-	append_whitelist_allow_rule "$mac"
-}
-
 handle_rule() {
 	local section enabled name ip mac mode weekdays start_time stop_time up_kbit down_kbit resolved_ip resolved_ip6 ip6_list up_rate down_rate has_any
 	section="$1"
@@ -482,13 +428,12 @@ handle_rule() {
 }
 
 apply_rules() {
-	local enabled policy_mode
+	local enabled
 
 	require_tools || return 1
 
 	config_load "$CONFIG_NAME"
 	config_get enabled globals enabled "1"
-	config_get policy_mode globals policy_mode "blacklist"
 	config_get EVENT_LOG_ENABLED globals log_enabled "0"
 
 	if [ "$enabled" != "1" ]; then
@@ -496,23 +441,6 @@ apply_rules() {
 		return 0
 	fi
 
-	if [ "$policy_mode" = "whitelist" ]; then
-		collect_event_logs
-		if ! ensure_bridge_table; then
-			log "whitelist mode is unavailable: nft bridge table could not be created"
-			return 0
-		fi
-		flush_bridge_rules
-		if "$NFT_BIN" list table "$TABLE_FAMILY" "$TABLE_NAME" >/dev/null 2>&1; then
-			"$NFT_BIN" delete table "$TABLE_FAMILY" "$TABLE_NAME"
-		fi
-		rm -f "$STATE_DIR"/* 2>/dev/null || true
-		config_foreach handle_whitelist_rule allow
-		append_whitelist_drop_rule
-		return 0
-	fi
-
-	clear_bridge_all
 	collect_event_logs
 	ensure_table
 	flush_rules

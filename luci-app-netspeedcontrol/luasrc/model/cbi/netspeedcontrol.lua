@@ -2,7 +2,7 @@ local sys = require "luci.sys"
 local uci = require("luci.model.uci").cursor()
 local util = require "luci.util"
 local m, s, o
-local APP_VERSION = "0.1.0-28"
+local APP_VERSION = "0.1.0-27"
 local online_devices
 
 local function normalize_mac(mac)
@@ -197,7 +197,7 @@ end
 online_devices = load_online_devices()
 
 m = Map("netspeedcontrol", translate("设备上网控制"))
-m.description = translate("现在默认只按 MAC 地址控制设备，不再需要选择匹配方式，也不需要手动填写 IP。黑名单模式只读取“黑名单规则列表”；白名单模式只读取“白名单设备列表”，两张列表互不共用。断网模式现在会更前置地拦截设备流量，尽量覆盖普通上网、路由器本机代理流量，以及像微信这类更顽固的长连接。拦截日志默认关闭；开启后，插件会按分钟生成中文汇总日志，记录设备尝试联网但被拦截的情况。") ..
+m.description = translate("现在默认只按 MAC 地址控制设备，不再需要选择匹配方式，也不需要手动填写 IP。在线设备下拉框会直接保存为规则的 MAC 地址；如果设备暂时不在线，也可以手动填写 MAC。断网模式现在会更前置地拦截设备流量，尽量覆盖普通上网、路由器本机代理流量，以及像微信这类更顽固的长连接。拦截日志默认关闭；开启后，插件会按分钟生成中文汇总日志，记录设备尝试联网但被拦截的情况。") ..
 	"<br /><strong>" .. translate("当前插件版本：") .. APP_VERSION .. "</strong>"
 
 function m.on_after_commit(self)
@@ -216,23 +216,15 @@ end
 o = s:option(Flag, "enabled", translate("启用服务"))
 o.rmempty = false
 
-o = s:option(ListValue, "policy_mode", translate("工作模式"))
-o:value("blacklist", translate("黑名单模式：限制列表里的设备"))
-o:value("whitelist", translate("白名单模式：只允许列表里的设备上网"))
-o.default = "blacklist"
-o.rmempty = false
-o.description = translate("黑名单模式：只限制黑名单列表里的设备。白名单模式：只允许白名单列表里的设备上网，其他设备都会被拦截。")
-
 o = s:option(Flag, "log_enabled", translate("记录拦截日志"))
 o.rmempty = false
 o.default = "0"
 o.description = translate("默认关闭。开启后会按分钟生成少量中文汇总日志，性能影响较小。开启后可以直接在当前页面底部查看最近日志。")
 
-s = m:section(TypedSection, "rule", translate("黑名单规则列表"))
+s = m:section(TypedSection, "rule", translate("规则列表"))
 s.addremove = true
 s.anonymous = true
 s.template = "cbi/tblsection"
-s.description = translate("这里只用于黑名单模式。启用的设备会按下面的控制方式和时间段被限制；白名单模式不会读取这里的设备。")
 
 o = s:option(Flag, "enabled", translate("启用"))
 o.rmempty = false
@@ -339,89 +331,6 @@ o:depends("mode", "limit")
 function s.parse(self, ...)
 	TypedSection.parse(self, ...)
 	uci:foreach("netspeedcontrol", "rule", function(rule)
-		persist_rule_mac(self.map, rule[".name"])
-	end)
-end
-
-s = m:section(TypedSection, "allow", translate("白名单设备列表"))
-s.addremove = true
-s.anonymous = true
-s.template = "cbi/tblsection"
-s.description = translate("这里只用于白名单模式。启用的设备允许上网，其他设备都会被拦截。建议先把当前管理设备加入白名单，再切换到白名单模式。")
-
-o = s:option(Flag, "enabled", translate("启用"))
-o.rmempty = false
-
-o = s:option(Value, "name", translate("设备名称"))
-o.placeholder = "MyPhone"
-o.rmempty = false
-
-o = s:option(ListValue, "mac", translate("允许上网的设备"))
-o:value("", translate("请选择在线设备"))
-o.description = translate("这里保存的是白名单设备的 MAC 地址。")
-o.rmempty = false
-
-for _, device in ipairs(online_devices) do
-	o:value(device.mac, device_label(device))
-end
-
-function o.cfgvalue(self, section)
-	local current_mac = normalize_mac(uci:get("netspeedcontrol", section, "mac") or "")
-
-	if current_mac ~= "" then
-		if not has_online_device(current_mac) then
-			ensure_option_value(self, current_mac, saved_device_label(current_mac))
-		end
-		return current_mac
-	end
-
-	return ""
-end
-
-function o.write(self, section, value)
-	value = normalize_mac(value)
-
-	if value ~= "" then
-		uci:set("netspeedcontrol", section, "mac", value)
-		uci:set("netspeedcontrol", section, "target_type", "mac")
-		uci:delete("netspeedcontrol", section, "ip")
-	else
-		uci:delete("netspeedcontrol", section, "mac")
-		uci:delete("netspeedcontrol", section, "ip")
-	end
-end
-
-o = s:option(Value, "_custom_mac", translate("手动填写 MAC"))
-o.datatype = "macaddr"
-o.placeholder = "AA:BB:CC:DD:EE:FF"
-o.description = translate("如果允许上网的设备当前不在在线列表里，可以在这里手动填。手动填写会覆盖上面选择的设备。")
-
-function o.cfgvalue(self, section)
-	local current_mac = normalize_mac(uci:get("netspeedcontrol", section, "mac") or "")
-
-	if current_mac ~= "" and not has_online_device(current_mac) then
-		return current_mac
-	end
-
-	return ""
-end
-
-function o.write(self, section, value)
-	value = normalize_mac(value)
-
-	if value ~= "" then
-		uci:set("netspeedcontrol", section, "mac", value)
-		uci:set("netspeedcontrol", section, "target_type", "mac")
-		uci:delete("netspeedcontrol", section, "ip")
-	end
-end
-
-function o.remove(self, section)
-end
-
-function s.parse(self, ...)
-	TypedSection.parse(self, ...)
-	uci:foreach("netspeedcontrol", "allow", function(rule)
 		persist_rule_mac(self.map, rule[".name"])
 	end)
 end
