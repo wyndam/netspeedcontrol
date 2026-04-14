@@ -2,7 +2,7 @@ local sys = require "luci.sys"
 local uci = require("luci.model.uci").cursor()
 local util = require "luci.util"
 local m, s, o
-local APP_VERSION = "0.1.0-27"
+local APP_VERSION = "0.1.0-31"
 local online_devices
 
 local function normalize_mac(mac)
@@ -157,7 +157,8 @@ end
 local function load_recent_logs()
 	local data
 
-	data = sys.exec([[tail -n 80 /tmp/netspeedcontrol-events.log 2>/dev/null]])
+	-- 读取日志文件，倒序显示（最新的在上面）
+	data = sys.exec("sed '1!G;h;$!d' /tmp/netspeedcontrol-events.log 2>/dev/null")
 	data = data or ""
 	data = data:gsub("\r\n", "\n")
 

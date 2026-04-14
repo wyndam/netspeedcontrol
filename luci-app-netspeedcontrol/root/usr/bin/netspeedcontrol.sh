@@ -178,6 +178,11 @@ is_rule_active() {
 
 trim_event_log() {
 	[ -f "$EVENT_LOG_FILE" ] || return 0
+	# 保留最近24小时的记录
+	local cutoff_time=$(date -d "24 hours ago" +"%Y-%m-%d %H:%M:%S")
+	awk -v cutoff="$cutoff_time" '$0 >= cutoff' "$EVENT_LOG_FILE" > "$EVENT_LOG_FILE.tmp" 2>/dev/null || return 0
+	mv "$EVENT_LOG_FILE.tmp" "$EVENT_LOG_FILE"
+	# 同时限制最大行数，防止日志过大
 	tail -n "$EVENT_LOG_MAX_LINES" "$EVENT_LOG_FILE" > "$EVENT_LOG_FILE.tmp" 2>/dev/null || return 0
 	mv "$EVENT_LOG_FILE.tmp" "$EVENT_LOG_FILE"
 }
@@ -295,9 +300,16 @@ append_block_rule() {
 	ip="$1"
 	name="$2"
 
+	# 允许访问路由器管理界面（端口 80 和 443）- prerouting 链优先，防止被后面的 drop 拦截
+	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" ip saddr "$ip" ip daddr 192.168.1.1 meta l4proto tcp tcp dport { 80, 443 } counter accept
+	# 拦截 prerouting 链中的其他流量
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" ip saddr "$ip" counter drop
+	# 拦截 forward 链中的流量（影响设备访问外部网络和其他设备）
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" ip saddr "$ip" counter drop
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" ip daddr "$ip" counter drop
+	# 允许访问路由器管理界面（端口 80 和 443）- input 链也保留
+	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" ip saddr "$ip" meta l4proto tcp tcp dport { 80, 443 } counter accept
+	# 拦截其他 input 流量
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" ip saddr "$ip" meta l4proto { tcp, udp } counter drop
 }
 
@@ -306,9 +318,16 @@ append_block_rule6() {
 	ip6="$1"
 	name="$2"
 
+	# 允许访问路由器管理界面（端口 80 和 443）- prerouting 链优先
+	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" ip6 saddr "$ip6" meta l4proto tcp tcp dport { 80, 443 } counter accept
+	# 拦截 prerouting 链中的其他流量
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_PREROUTING_NAME" ip6 saddr "$ip6" counter drop
+	# 拦截 forward 链中的流量（影响设备访问外部网络和其他设备）
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" ip6 saddr "$ip6" counter drop
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_NAME" ip6 daddr "$ip6" counter drop
+	# 允许访问路由器管理界面（端口 80 和 443）- input 链也保留
+	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" ip6 saddr "$ip6" meta l4proto tcp tcp dport { 80, 443 } counter accept
+	# 拦截其他 input 流量
 	"$NFT_BIN" add rule "$TABLE_FAMILY" "$TABLE_NAME" "$CHAIN_INPUT_NAME" ip6 saddr "$ip6" meta l4proto { tcp, udp } counter drop
 }
 

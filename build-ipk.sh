@@ -4,7 +4,7 @@ set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PKG_NAME="luci-app-netspeedcontrol"
-PKG_VERSION="0.1.0-27"
+PKG_VERSION="0.1.0-31"
 ARCH="all"
 SOURCE_DIR="$ROOT_DIR/$PKG_NAME"
 BUILD_DIR="$ROOT_DIR/.ipkbuild/$PKG_NAME"
@@ -28,7 +28,7 @@ cp "$SOURCE_DIR/luasrc/model/cbi/netspeedcontrol.lua" \
 
 cat > "$BUILD_DIR/CONTROL/control" <<'EOF'
 Package: luci-app-netspeedcontrol
-Version: 0.1.0-27
+Version: 0.1.0-31
 Depends: luci-base, luci-compat, nftables, firewall4
 Source: local
 License: MIT

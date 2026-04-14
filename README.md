@@ -9,13 +9,13 @@
 最新打包好的 IPK 文件是：
 
 ```sh
-dist/luci-app-netspeedcontrol_0.1.0-27_all.ipk
+dist/luci-app-netspeedcontrol_0.1.0-31_all.ipk
 ```
 
 把这个文件上传到路由器的 `/tmp` 目录后安装：
 
 ```sh
-opkg install /tmp/luci-app-netspeedcontrol_0.1.0-27_all.ipk
+opkg install /tmp/luci-app-netspeedcontrol_0.1.0-31_all.ipk
 ```
 
 如果 LuCI 菜单没有马上刷新，可以重启 LuCI Web 服务：

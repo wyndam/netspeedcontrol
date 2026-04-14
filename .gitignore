@@ -3,6 +3,6 @@
 .artest/
 
 dist/*.ipk
-!dist/luci-app-netspeedcontrol_0.1.0-27_all.ipk
+!dist/luci-app-netspeedcontrol_0.1.0-31_all.ipk
 
 *.tmp
